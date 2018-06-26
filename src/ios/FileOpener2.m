@@ -30,27 +30,23 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 @synthesize controller = docController;
 
 - (void) open: (CDVInvokedUrlCommand*)command {
+    self._callbackId = command.callbackId;
 
-	NSString *path = [[command.arguments objectAtIndex:0] stringByAddingPercentEscapesUsingEncoding:NSUTF8StringEncoding];
-	NSString *contentType = [command.arguments objectAtIndex:1];
-	BOOL showPreview = YES;
+    NSString *path = [[command.arguments objectAtIndex:0] stringByAddingPercentEscapesUsingEncoding:NSUTF8StringEncoding];
+	NSString *contentType = nil;
 
-	if ([command.arguments count] >= 3) {
-		showPreview = [[command.arguments objectAtIndex:2] boolValue];
+    NSLog(@"command.arguments:%@",command.arguments);
+	if([command.arguments count] == 2) { // Includes contentType
+		contentType = [command.arguments objectAtIndex:1];
 	}
 
 	CDVViewController* cont = (CDVViewController*)[super viewController];
 	self.cdvViewController = cont;
-	NSString *uti = nil;
 
-	if([contentType length] == 0){
-		NSArray *dotParts = [path componentsSeparatedByString:@"."];
-		NSString *fileExt = [dotParts lastObject];
+	NSArray *dotParts = [path componentsSeparatedByString:@"."];
+	NSString *fileExt = [dotParts lastObject];
 
-		uti = (__bridge NSString *)UTTypeCreatePreferredIdentifierForTag(kUTTagClassFilenameExtension, (__bridge CFStringRef)fileExt, NULL);
-	} else {
-		uti = (__bridge NSString *)UTTypeCreatePreferredIdentifierForTag(kUTTagClassMIMEType, (__bridge CFStringRef)contentType, NULL);
-	}
+	NSString *uti = (__bridge NSString *)UTTypeCreatePreferredIdentifierForTag(kUTTagClassFilenameExtension, (__bridge CFStringRef)fileExt, NULL);
 
 	dispatch_async(dispatch_get_main_queue(), ^{
 		NSURL *fileURL = [NSURL URLWithString:path];
@@ -76,14 +72,14 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 		//Opens the file preview
 		BOOL wasOpened = NO;
 
-		if (showPreview) {
-			wasOpened = [docController presentPreviewAnimated: NO];
-		} else {
-			CDVViewController* cont = self.cdvViewController;
-			CGRect rect = CGRectMake(0, 0, cont.view.bounds.size.width, cont.view.bounds.size.height);
-			wasOpened = [docController presentOpenInMenuFromRect:rect inView:cont.view animated:YES];
-		}
-
+        wasOpened = [docController presentPreviewAnimated: NO];
+        if(wasOpened == NO) {
+            CDVViewController* cont = self.cdvViewController;
+            CGRect rect = CGRectMake(0, 0, cont.view.bounds.size.width, cont.view.bounds.size.height);
+            wasOpened = [docController presentOpenInMenuFromRect:rect inView:cont.view animated:YES];
+        }
+        
+        
 		if(wasOpened) {
 			pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsString: @""];
 			//NSLog(@"Success");
@@ -103,7 +99,21 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 @end
 
 @implementation FileOpener2 (UIDocumentInteractionControllerDelegate)
-	- (UIViewController *)documentInteractionControllerViewControllerForPreview:(UIDocumentInteractionController *)controller {
-		return self.cdvViewController;
-	}
+- (UIViewController *)documentInteractionControllerViewControllerForPreview:(UIDocumentInteractionController *)controller {
+    return self.cdvViewController;
+}
+
+- (void)documentInteractionControllerDidDismissOpenInMenu:(UIDocumentInteractionController *)controller{
+    NSLog(@"%s,%@",__func__,self._callbackId);
+    if (self._callbackId) {
+        NSDictionary *jsonObj = [ [NSDictionary alloc]
+                                 initWithObjectsAndKeys :
+                                 @"10", @"status",
+                                 @"dismiss open in menu", @"message",
+                                 nil
+                                 ];
+        CDVPluginResult* pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsDictionary:jsonObj];
+        [self.commandDelegate sendPluginResult:pluginResult callbackId:self._callbackId];
+    }
+}
 @end
